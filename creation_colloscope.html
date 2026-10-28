@@ -1,0 +1,885 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Atelier colloscope</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=DM+Mono:wght@400;500&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Concept : un cahier quadrillé dont chaque case se remplit comme une table de programmation dynamique.
+   Sciences = teintes froides, lettres = teintes chaudes, le rouge est réservé au stylo de correction (conflits, manques). */
+:root{
+  --bg:#EDF0F6; --surface:#FFFFFF; --surface2:#F5F7FB; --ink:#15203B; --muted:#58638A;
+  --line:#D3DAE8; --line2:#E4E9F3; --accent:#1D3FBF; --on-accent:#FFFFFF;
+  --pen:#C8372B; --ok:#1B8A57; --paper:rgba(29,63,191,.07);
+  --f-display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
+  --f-body:'Hanken Grotesk','Segoe UI',system-ui,sans-serif;
+  --f-mono:'DM Mono',ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1120; --surface:#131B2F; --surface2:#19233B; --ink:#E6EBF7; --muted:#9AA7C7;
+    --line:#2A3657; --line2:#1F2A47; --accent:#86A2FF; --on-accent:#0B1120;
+    --pen:#FF7C6C; --ok:#4FD39A; --paper:rgba(134,162,255,.07); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1120; --surface:#131B2F; --surface2:#19233B; --ink:#E6EBF7; --muted:#9AA7C7;
+  --line:#2A3657; --line2:#1F2A47; --accent:#86A2FF; --on-accent:#0B1120;
+  --pen:#FF7C6C; --ok:#4FD39A; --paper:rgba(134,162,255,.07); color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background-color:var(--bg);background-image:linear-gradient(var(--paper) 1px,transparent 1px),linear-gradient(90deg,var(--paper) 1px,transparent 1px);background-size:28px 28px;color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45;min-height:100vh}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:40;background:var(--bg)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 56px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:var(--f-display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:18px;font-weight:700}
+.sub{margin:2px 0 12px;color:var(--muted);font-size:13px;max-width:62ch}
+.mono{font-family:var(--f-mono)}
+
+/* en-tête */
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:4px 12px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.02em}
+.brand svg{width:26px;height:26px;flex:none}
+.sync{margin-left:auto;display:flex;align-items:center;gap:6px;font:400 12px var(--f-mono);color:var(--muted)}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.sync.saving i{background:var(--accent)}
+.sync.local i{background:var(--muted)}
+
+/* onglets = étapes */
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;gap:6px;overflow-x:auto;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line);margin-bottom:16px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px 7px 8px;font-weight:600;font-size:13px;color:var(--muted)}
+.tab .n{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);font:500 11px var(--f-mono);color:var(--muted)}
+.tab[aria-current="page"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tab[aria-current="page"] .n{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+
+/* briques */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.card+.card{margin-top:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;align-items:start}
+.grid2>.card+.card{margin-top:0}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 14px;font-weight:600;font-size:13px}
+.btn:hover{filter:brightness(1.12)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.big{padding:12px 22px;font-size:15px;font-family:var(--f-display)}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--ink);filter:none}
+.btn.warn{background:var(--pen);border-color:var(--pen);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:5px 10px;font-size:12px}
+.in{border:1px solid var(--line);background:var(--surface2);border-radius:7px;padding:6px 9px;min-width:0;width:100%}
+.in:hover{border-color:var(--muted)}
+.in.abr{width:62px;text-align:center;font-family:var(--f-mono);font-size:12px}
+.in.num{width:62px;text-align:center;font-family:var(--f-mono)}
+.grow{flex:1 1 120px}
+.rows{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:6px}
+.row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.row select{width:auto;max-width:100%}
+.empty{color:var(--muted);font-style:italic;padding:6px 0}
+.x{flex:none;width:28px;height:28px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--muted);font-size:18px;line-height:1}
+.x:hover{color:var(--pen);border-color:var(--pen)}
+.lnk{border:0;background:none;color:var(--accent);font:500 12px var(--f-mono);padding:4px 2px;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+.add{display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px dashed var(--line)}
+.add .in{flex:1 1 140px;width:auto}
+.dot{flex:none;width:20px;height:20px;border-radius:6px;border:0;background:var(--mc);box-shadow:inset 0 0 0 2px color-mix(in srgb,#000 12%,transparent)}
+.dot.s{width:10px;height:10px;border-radius:3px;box-shadow:none}
+.mrow{list-style:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px;border:1px solid var(--line2);border-radius:8px;background:var(--surface2)}
+.seg2{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-left:26px}
+.seg2 button{border:0;background:transparent;padding:4px 10px;font-size:12px;font-weight:600;color:var(--muted)}
+.seg2 button.on{background:var(--mc);color:#fff}
+.tag{font:500 10.5px var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.banner{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;background:color-mix(in srgb,var(--accent) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:var(--r);padding:10px 14px;margin-bottom:14px}
+.banner p{margin:0;flex:1 1 260px;font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+
+/* grille de disponibilités (tableau à peindre) */
+.ents{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.ents .lab{font:500 10.5px var(--f-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-right:4px}
+.ent{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 10px;font-weight:500;font-size:13px;border-left:4px solid var(--mc,var(--accent))}
+.ent[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink);border-left-color:var(--mc,var(--accent))}
+.ent small{font:400 11px var(--f-mono);opacity:.7}
+.pg{display:grid;grid-template-columns:44px repeat(6,minmax(0,1fr));gap:3px;user-select:none;-webkit-user-select:none;touch-action:pan-y;max-width:640px}
+.ph{font:500 11px var(--f-mono);color:var(--muted);background:none;border:0;padding:5px 0;text-align:center;border-radius:5px}
+.ph:hover{background:var(--surface2);color:var(--ink)}
+.pc{height:30px;border-radius:5px;background:var(--surface2);border:1px solid var(--line2);cursor:crosshair}
+.pc:hover{border-color:var(--muted)}
+.pc.on{background:var(--ec);border-color:var(--ec)}
+.pg.allfree .pc:not(.on){background:repeating-linear-gradient(45deg,transparent 0 4px,color-mix(in srgb,var(--ec) 28%,transparent) 4px 5px)}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.tools select{width:auto}
+.hint{font-size:12.5px;color:var(--muted);margin:0 0 10px;max-width:70ch}
+.syn{display:grid;grid-template-columns:44px repeat(6,minmax(0,1fr));gap:3px;max-width:640px}
+.sc{height:46px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:500 13px var(--f-mono);background:color-mix(in srgb,var(--accent) calc(var(--v)*1%),var(--surface2));border:1px solid var(--line2)}
+.sc.z{color:var(--muted);font-weight:400}
+.sc .dots{display:flex;gap:2px}
+.sc .dots i{width:6px;height:6px;border-radius:2px;background:var(--mc)}
+.rl{font:500 11px var(--f-mono);color:var(--muted);display:flex;align-items:center;justify-content:center}
+
+/* étape 3 */
+.wchips{display:flex;flex-wrap:wrap;gap:5px}
+.wchip{border:1px solid var(--line);background:var(--surface2);border-radius:7px;padding:4px 0;width:54px;display:flex;flex-direction:column;align-items:center;line-height:1.15}
+.wchip b{font:500 12px var(--f-mono)}
+.wchip small{font:400 10.5px var(--f-mono);color:var(--muted)}
+.wchip.off{background:repeating-linear-gradient(45deg,transparent 0 5px,var(--line) 5px 6px);color:var(--muted)}
+.fields{display:flex;gap:14px 20px;flex-wrap:wrap;margin-bottom:14px}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+.fld .in{width:auto;color:var(--ink);font-weight:400}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:6px}
+.chk input{margin-top:3px;accent-color:var(--accent)}
+.qrows{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px}
+.qrow{border:1px solid var(--line2);border-left:4px solid var(--mc);border-radius:8px;padding:10px 12px;background:var(--surface2);display:flex;flex-direction:column;gap:6px;min-width:0}
+.qh{display:flex;align-items:center;gap:8px}
+.stepper{display:flex;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap}
+.stepper button{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);background:var(--surface);font-size:16px;line-height:1}
+.stepper button:hover{border-color:var(--ink)}
+.stepper output{font:500 15px var(--f-mono);min-width:22px;text-align:center}
+.qf,.qc{font-size:12px;color:var(--muted)}
+.bar{height:7px;background:var(--line2);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);border-radius:4px}
+.bar.bad i{background:var(--pen)}
+.probs{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:6px}
+.probs li{display:flex;gap:8px;font-size:13px;align-items:flex-start}
+.probs li::before{content:"";flex:none;width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--pen)}
+.probs li.soft::before{background:transparent;border:2px solid var(--pen)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+/* étape 4 */
+.bilan{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;flex-direction:column}
+.stat b{font:700 26px var(--f-display);letter-spacing:-.02em}
+.stat b small{font:400 14px var(--f-mono);color:var(--muted)}
+.stat span{font-size:12.5px;color:var(--muted)}
+.stat em{font-style:normal;font-family:var(--f-mono);font-size:11px}
+.stat.warn{border-color:var(--pen)}
+.stat.warn b{color:var(--pen)}
+.bar2{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:7px 12px;font-weight:600;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.spacer{flex:1}
+.scroll{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100%}
+.mx th,.mx td{border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);padding:3px;vertical-align:top;background:var(--surface)}
+.mx thead th{position:sticky;top:0;z-index:3;background:var(--surface2);padding:0}
+.mx thead th button{width:100%;border:0;background:none;padding:6px 2px;line-height:1.2;display:flex;flex-direction:column;align-items:center}
+.mx thead th b{font:500 12px var(--f-mono)}
+.mx thead th small{font:400 10.5px var(--f-mono);color:var(--muted)}
+.mx .rowh{position:sticky;left:0;z-index:2;background:var(--surface2);min-width:92px;text-align:left;padding:6px 8px;font-weight:600;white-space:nowrap}
+.mx thead .rowh{z-index:4}
+.mx td{min-width:76px;height:54px}
+.mx td.skip,.mx th.skip{min-width:26px;width:26px;background:repeating-linear-gradient(45deg,transparent 0 5px,var(--line2) 5px 6px)}
+.mx td.tot{min-width:36px;text-align:center;font:500 12px var(--f-mono);color:var(--muted);vertical-align:middle}
+.mx .future{visibility:hidden}
+.mx td.now,.mx th.now{box-shadow:inset 0 -3px 0 var(--accent)}
+.blk{display:flex;flex-direction:column;width:100%;text-align:left;border:0;border-left:3px solid var(--mc);background:color-mix(in srgb,var(--mc) 17%,var(--surface));color:var(--ink);border-radius:4px;padding:2px 5px;margin-bottom:2px;min-width:0}
+.blk b{font:500 11px var(--f-mono);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk i{font:400 10.5px var(--f-mono);font-style:normal;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk:hover{background:color-mix(in srgb,var(--mc) 30%,var(--surface))}
+.blk.sel{box-shadow:0 0 0 2px var(--ink)}
+.blk.todo{border:1px dashed var(--pen);border-left:3px solid var(--pen);background:transparent}
+.pop{animation:pop .35s cubic-bezier(.2,.8,.2,1) both}
+@keyframes pop{from{transform:scale(.55);opacity:0}to{transform:none;opacity:1}}
+.wknav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.wknav select{width:auto;max-width:100%}
+.wknav .btn.sm{min-width:36px}
+.tray{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;padding:8px 10px;border:1px dashed var(--pen);border-radius:var(--r)}
+.tray .blk{width:auto;min-width:120px}
+.tray>span{font-size:12.5px;color:var(--pen);font-weight:600}
+.wk{display:grid;grid-template-columns:46px repeat(6,minmax(108px,1fr));min-width:720px}
+.wk .dh{position:sticky;top:0;z-index:2;background:var(--surface2);padding:6px 4px;text-align:center;font:500 12px var(--f-mono);border-bottom:1px solid var(--line);border-right:1px solid var(--line2)}
+.wk .dh small{display:block;color:var(--muted);font-size:10.5px;font-weight:400}
+.wk .hl{display:flex;align-items:flex-start;justify-content:center;padding-top:6px;font:500 11px var(--f-mono);color:var(--muted);border-bottom:1px solid var(--line2);border-right:1px solid var(--line2);background:var(--surface2);position:sticky;left:0;z-index:1}
+.wk .cell{min-height:70px;padding:16px 3px 3px;border-bottom:1px solid var(--line2);border-right:1px solid var(--line2);position:relative;background:var(--surface)}
+.wk .cell.closed{background:repeating-linear-gradient(45deg,transparent 0 6px,var(--line2) 6px 7px)}
+.wk .cell.ok{background:color-mix(in srgb,var(--ok) 11%,var(--surface));outline:2px dashed var(--ok);outline-offset:-3px;cursor:pointer}
+.wk .cell.ok:hover{background:color-mix(in srgb,var(--ok) 22%,var(--surface))}
+.wk .cell.dim{opacity:.5}
+.wk .cell.cur{outline:2px solid var(--ink);outline-offset:-3px}
+.cap{position:absolute;top:2px;right:5px;font:400 10px var(--f-mono);color:var(--muted)}
+.detail{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;background:var(--surface);border:1px solid var(--ink);border-radius:var(--r);padding:10px 14px;margin-bottom:12px}
+.detail .t{font-family:var(--f-display);font-weight:700;font-size:15px}
+.detail label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.detail select{width:auto}
+.hintbar{font-size:12.5px;color:var(--ok);font-weight:600}
+
+/* modale + toast */
+.ovl{position:fixed;inset:0;z-index:60;background:color-mix(in srgb,var(--ink) 45%,transparent);display:grid;place-items:center;padding:16px}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(640px,100%);max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.modal textarea{width:100%;min-height:220px;font:400 11.5px var(--f-mono);border:1px solid var(--line);border-radius:8px;background:var(--surface2);padding:8px;resize:vertical}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
+#toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}#toast{transition:none}}
+@media (max-width:520px){.brand{font-size:19px}.mx td{min-width:68px}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><g stroke="currentColor" stroke-width="1.4" fill="none"><rect x="1" y="1" width="24" height="24" rx="4"/><path d="M9 1v24M17 1v24M1 9h24M1 17h24"/></g><rect x="1.7" y="1.7" width="7.6" height="7.6" rx="2" fill="#3B6FE0"/><rect x="9.7" y="9.7" width="7.6" height="7.6" rx="2" fill="#E0762B"/><rect x="17.7" y="1.7" width="6.6" height="7.6" rx="2" fill="#0E9AA7"/><rect x="1.7" y="17.7" width="7.6" height="6.6" rx="2" fill="#D6457F"/></svg>
+      <span>Atelier colloscope</span>
+    </div>
+    <div class="sync" id="sync"><i></i><span>Prêt</span></div>
+    <button class="btn ghost sm" data-act="backup">Sauvegarde</button>
+  </header>
+  <nav class="tabs" id="tabs" aria-label="Étapes"></nav>
+  <div id="banner"></div>
+  <main id="panel"></main>
+</div>
+<div id="modal"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/*CORE*/
+const DAYS=['Lun','Mar','Mer','Jeu','Ven','Sam'];
+const keyOf=(d,h)=>d+'-'+h;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let _u=0;const uid=p=>(p||'x')+(++_u).toString(36)+Math.random().toString(36).slice(2,5);
+const hasAny=o=>{for(const k in o)return true;return false};
+const availC=(c,d,h)=>!hasAny(c.dispo)||!!c.dispo[keyOf(d,h)];
+const availS=(s,d,h)=>!!s.dispo[keyOf(d,h)];
+const roomsAt=(S,d,h)=>S.salles.reduce((n,s)=>n+(availS(s,d,h)?1:0),0);
+function activeWeeks(S){const sk=new Set(S.settings.skip);const a=[];for(let i=0;i<S.settings.weeks;i++)if(!sk.has(i))a.push(i);return a}
+
+function generateColles(S,seed){
+  const rnd=mulberry32(seed*7919+13);
+  const st=S.settings,act=activeWeeks(S),P=act.length,G=S.groupes;
+  const hmin=st.hmin,hmax=st.hmax;
+  if(!P||!G.length)return[];
+  /* 1. plan idéal : pour chaque groupe et matière, une phase qui équilibre la charge et alterne les types */
+  const gLoad=new Array(P).fill(0);
+  const gTypes={};G.forEach(g=>gTypes[g.id]=Array.from({length:P},()=>[]));
+  const byPos=Array.from({length:P},()=>[]);
+  const ms=[...S.matieres].sort((a,b)=>b.every-a.every);
+  const phases={};
+  const apply=(g,m,ph,sign)=>{
+    const N=Math.max(1,Math.round(m.every)||1);
+    for(let p=ph;p<P;p+=N){
+      gLoad[p]+=sign;
+      const arr=gTypes[g.id][p];
+      if(sign>0)arr.push(m.type);else arr.splice(arr.indexOf(m.type),1);
+    }
+  };
+  const scoreOf=(g,m,i,ph)=>{
+    const N=Math.max(1,Math.round(m.every)||1);
+    const pref=Math.floor(i*N/G.length)%N;
+    let sc=0,n=0;
+    for(let p=ph;p<P;p+=N){
+      n++;
+      const here=gTypes[g.id][p];
+      sc+=gLoad[p]+here.length*6;
+      if(st.alt){
+        sc+=here.filter(t=>t===m.type).length*14;
+        for(const q of[p-1,p+1])if(q>=0&&q<P){const a=gTypes[g.id][q];if(a.length)sc+=2.5*a.filter(t=>t===m.type).length/a.length}
+        for(const q of[p-2,p+2])if(q>=0&&q<P){const a=gTypes[g.id][q];if(a.length&&a.every(t=>t===m.type))sc+=1.5}
+      }
+    }
+    return sc/n+Math.min((ph-pref+N)%N,(pref-ph+N)%N)*0.15+rnd()*0.3;
+  };
+  const choose=(g,m,i)=>{
+    const N=Math.max(1,Math.round(m.every)||1);
+    let best=0,bs=Infinity;
+    for(let ph=0;ph<N&&ph<P;ph++){const sc=scoreOf(g,m,i,ph);if(sc<bs){bs=sc;best=ph}}
+    return best;
+  };
+  for(const m of ms)G.forEach((g,i)=>{const ph=choose(g,m,i);phases[g.id+'|'+m.id]=ph;apply(g,m,ph,1)});
+  /* passes de raffinement : chaque phase est recalculée en connaissant toutes les autres */
+  for(let pass=0;pass<4;pass++){
+    for(const m of ms)G.forEach((g,i)=>{
+      const k=g.id+'|'+m.id;
+      apply(g,m,phases[k],-1);
+      const ph=choose(g,m,i);phases[k]=ph;apply(g,m,ph,1);
+    });
+  }
+  for(const m of ms){
+    const N=Math.max(1,Math.round(m.every)||1);
+    G.forEach(g=>{for(let p=phases[g.id+'|'+m.id];p<P;p+=N)byPos[p].push({g:g.id,m:m.id,pos:p})});
+  }
+  /* 2. placement semaine par semaine, créneau le plus contraint d'abord */
+  const colMat={};S.matieres.forEach(m=>colMat[m.id]=S.colleurs.filter(c=>c.mat===m.id));
+  const cTotal={};S.colleurs.forEach(c=>cTotal[c.id]=0);
+  const gHist={};G.forEach(g=>gHist[g.id]={});
+  const maxG=Math.max(1,st.maxG|0);
+  const mType={};S.matieres.forEach(m=>mType[m.id]=m.type);
+  const gLast={};
+  const colles=[];let carry=[];
+  for(let p=0;p<P;p++){
+    const w=act[p];
+    const busyG={},busyC={},busyS={},gDay={},cDay={},cCnt={},gWeek={},dayLoad=[0,0,0,0,0,0];
+    const isBusy=(m,id,k)=>!!(m[id]&&m[id].has(k));
+    const mark=(m,id,k)=>{(m[id]||(m[id]=new Set())).add(k)};
+    const events=carry.concat(byPos[p]);carry=[];
+    const cnt={},todo=[];
+    for(const e of events){cnt[e.g]=(cnt[e.g]||0)+1;if(cnt[e.g]>maxG)carry.push(e);else todo.push(e)}
+    const optionsFor=e=>{
+      let n=0,best=null;
+      const cs=colMat[e.m]||[];
+      for(let d=0;d<6;d++)for(let h=hmin;h<hmax;h++){
+        const k=keyOf(d,h);
+        if(isBusy(busyG,e.g,k))continue;
+        const rooms=S.salles.filter(s=>availS(s,d,h)&&!isBusy(busyS,s.id,k));
+        if(!rooms.length)continue;
+        let any=false;
+        for(const c of cs){
+          if(!availC(c,d,h)||isBusy(busyC,c.id,k)||(cCnt[c.id]||0)>=c.max)continue;
+          any=true;
+          const sameDay=(cDay[c.id]&&cDay[c.id][d])||[];
+          for(const s of rooms){
+            let cost=0;
+            if(gDay[e.g]&&gDay[e.g][d])cost+=st.oneADay?40:4;
+            cost+=(gHist[e.g][k]||0)*1.2;
+            cost+=cTotal[c.id]*0.6;
+            cost+=dayLoad[d]*0.25;
+            if(sameDay.length){
+              const adj=sameDay.find(x=>Math.abs(x.h-h)===1);
+              cost+=adj?(adj.s===s.id?-2:-1.5):1.0;
+            }
+            if(st.alt){
+              const tt=mType[e.m],gw=gWeek[e.g]||[],tm=d*100+h;
+              let pred=null,succ=null;
+              for(const x of gw){if(x.tm<tm){if(!pred||x.tm>pred.tm)pred=x}else if(!succ||x.tm<succ.tm)succ=x}
+              const pt=pred?pred.t:(gw.length&&!pred?null:gLast[e.g]);
+              if(pt&&pt===tt)cost+=7;
+              if(succ&&succ.t===tt)cost+=7;
+            }
+            cost+=rnd()*0.8;
+            if(!best||cost<best.cost)best={d,h,c:c.id,s:s.id,cost};
+          }
+        }
+        if(any)n++;
+      }
+      return{n,best};
+    };
+    while(todo.length){
+      let pi=-1,po=null,mn=Infinity;
+      for(let i=0;i<todo.length;i++){
+        const o=optionsFor(todo[i]);
+        const sc=o.n+(todo[i].carried?-0.5:0);
+        if(sc<mn){mn=sc;pi=i;po=o}
+      }
+      const e=todo.splice(pi,1)[0];
+      if(!po.best){e.carried=true;carry.push(e);continue}
+      const b=po.best,k=keyOf(b.d,b.h);
+      mark(busyG,e.g,k);mark(busyC,b.c,k);mark(busyS,b.s,k);
+      (gDay[e.g]||(gDay[e.g]={}))[b.d]=1;
+      ((cDay[b.c]||(cDay[b.c]={}))[b.d]||(cDay[b.c][b.d]=[])).push({h:b.h,s:b.s});
+      cCnt[b.c]=(cCnt[b.c]||0)+1;cTotal[b.c]++;dayLoad[b.d]++;
+      gHist[e.g][k]=(gHist[e.g][k]||0)+1;
+      (gWeek[e.g]||(gWeek[e.g]=[])).push({tm:b.d*100+b.h,t:mType[e.m]});
+      colles.push({id:uid('c'),w,g:e.g,m:e.m,c:b.c,s:b.s,d:b.d,h:b.h});
+    }
+    for(const gid in gWeek){const a=gWeek[gid].slice().sort((x,y)=>x.tm-y.tm);gLast[gid]=a[a.length-1].t}
+  }
+  for(const e of carry)colles.push({id:uid('c'),w:act[e.pos],g:e.g,m:e.m,c:null,s:null,d:null,h:null});
+  return colles;
+}
+
+function computeStats(S){
+  const placed=S.colles.filter(c=>c.d!=null);
+  const typeOf=id=>{const m=S.matieres.find(x=>x.id===id);return m&&m.type};
+  const byG={};placed.forEach(c=>{(byG[c.g]||(byG[c.g]=[])).push(c)});
+  let pairs=0,diff=0,maxPairs=0;
+  Object.values(byG).forEach(a=>{
+    a.sort((x,y)=>x.w-y.w||x.d-y.d||x.h-y.h);
+    let s=0,l=0;
+    a.forEach(c=>typeOf(c.m)==='sci'?s++:l++);
+    for(let i=1;i<a.length;i++){pairs++;if(typeOf(a[i].m)!==typeOf(a[i-1].m))diff++}
+    if(a.length>1)maxPairs+=Math.min(2*Math.min(s,l),s+l-1);
+  });
+  return{planned:S.colles.length,placed:placed.length,missing:S.colles.length-placed.length,
+    alt:pairs?Math.round(100*diff/pairs):null,altMax:pairs?Math.round(100*maxPairs/pairs):null};
+}
+
+function capacity(S){
+  const hmin=S.settings.hmin,hmax=S.settings.hmax;
+  let total=0;
+  for(let d=0;d<6;d++)for(let h=hmin;h<hmax;h++)total+=roomsAt(S,d,h);
+  const per={};
+  S.matieres.forEach(m=>{
+    let cap=0;
+    S.colleurs.filter(c=>c.mat===m.id).forEach(c=>{
+      let n=0;
+      for(let d=0;d<6;d++)for(let h=hmin;h<hmax;h++)if(availC(c,d,h)&&roomsAt(S,d,h)>0)n++;
+      cap+=Math.min(c.max,n);
+    });
+    per[m.id]={cap,need:S.groupes.length/Math.max(1,m.every)};
+  });
+  const need=Object.values(per).reduce((a,x)=>a+x.need,0);
+  return{total,per,need};
+}
+
+function makeExample(){
+  const D=(days,hours)=>{const o={};days.forEach(d=>hours.forEach(h=>o[keyOf(d,h)]=1));return o};
+  const soir=[17,18,19],apm=[14,15,16];
+  const S={v:1,example:true,edited:false,
+    settings:{weeks:28,start:'2026-11-02',skip:[7,8],maxG:2,oneADay:true,alt:true,seed:1,hmin:8,hmax:20},
+    salles:[
+      {id:'s1',nom:'B101',dispo:D([0,1,2,3],soir)},
+      {id:'s2',nom:'B102',dispo:D([0,1,2,3],soir)},
+      {id:'s3',nom:'A204',dispo:Object.assign(D([1,2,3,4],soir),D([2],apm))}],
+    matieres:[
+      {id:'mat',nom:'Mathématiques',abr:'MAT',type:'sci',every:2,color:'#3B6FE0'},
+      {id:'phy',nom:'Physique-chimie',abr:'PHY',type:'sci',every:4,color:'#0E9AA7'},
+      {id:'inf',nom:'Informatique',abr:'INF',type:'sci',every:4,color:'#5B5BD6'},
+      {id:'ang',nom:'Anglais',abr:'ANG',type:'let',every:2,color:'#E0762B'},
+      {id:'fra',nom:'Français-philo',abr:'FPH',type:'let',every:4,color:'#D6457F'}],
+    colleurs:[
+      {id:'k1',nom:'M. Lambert',mat:'mat',max:6,dispo:D([0,1],soir)},
+      {id:'k2',nom:'Mme Rey',mat:'mat',max:6,dispo:D([1,3],soir)},
+      {id:'k3',nom:'M. Faure',mat:'mat',max:6,dispo:{}},
+      {id:'k4',nom:'Mme Dupuis',mat:'phy',max:6,dispo:Object.assign(D([0],[18,19]),D([2],apm))},
+      {id:'k5',nom:'M. Garnier',mat:'phy',max:6,dispo:D([3,4],soir)},
+      {id:'k6',nom:'M. Roche',mat:'inf',max:6,dispo:D([1,3],soir)},
+      {id:'k7',nom:'Mme Hall',mat:'ang',max:6,dispo:D([0,1,3],soir)},
+      {id:'k8',nom:'M. Bernard',mat:'ang',max:6,dispo:Object.assign(D([2],apm),D([4],soir))},
+      {id:'k9',nom:'Mme Vidal',mat:'fra',max:6,dispo:D([1,3],soir)},
+      {id:'k10',nom:'M. Perrin',mat:'fra',max:6,dispo:Object.assign(D([0],soir),D([2],apm))}],
+    groupes:Array.from({length:8},(_,i)=>({id:'g'+(i+1),nom:'G'+(i+1)})),
+    colles:[]};
+  S.colles=generateColles(S,1);
+  return S;
+}
+/*ENDCORE*/
+
+/* ---------- interface ---------- */
+const KEY='colloscope.v1';
+const SCI=['#3B6FE0','#0E9AA7','#5B5BD6','#2F9E6B'],LET=['#E0762B','#D6457F','#BF8F00','#B5503A'];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>(Math.round(n*10)/10).toFixed(1).replace('.',',');
+const iso=dt=>dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+function toMonday(str){const p=str.split('-').map(Number);const dt=new Date(p[0],p[1]-1,p[2]);dt.setDate(dt.getDate()-((dt.getDay()+6)%7));return iso(dt)}
+function weekDate(i,d){const p=S.settings.start.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]+7*i+(d||0))}
+const fmtShort=(i,d)=>{const x=weekDate(i,d);return x.getDate()+'/'+(x.getMonth()+1)};
+const fmtLong=(i,d)=>weekDate(i,d).toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+const find=(arr,id)=>arr.find(x=>x.id===id);
+const abbr=m=>m?(m.abr||m.nom.replace(/[^A-Za-zÀ-ÿ]/g,'').slice(0,3).toUpperCase()):'?';
+
+function load(){try{const j=localStorage.getItem(KEY);if(j){const o=JSON.parse(j);if(o&&o.v===1&&o.settings)return o}}catch(e){}return null}
+let S=load()||makeExample();
+const ui={tab:'colle',view:'groupe',week:0,sel:null,ent:{t:'salle',id:null},progress:1e9,armed:null,timer:null,play:null};
+let DB=null,DL=null,saveT=null,inflight=false,dirty=false;
+
+/* sauvegarde */
+function setSync(k){
+  const el=$('#sync');if(!el)return;
+  el.className='sync '+(k==='saving'?'saving':k==='local'?'local':'');
+  el.querySelector('span').textContent=k==='saving'?'Enregistrement…':k==='local'?'Enregistré sur cet appareil':'Enregistré';
+}
+function scheduleSave(){clearTimeout(saveT);setSync('saving');saveT=setTimeout(doSave,900)}
+async function doSave(){
+  S.savedAt=Date.now();
+  const json=JSON.stringify(S);
+  try{localStorage.setItem(KEY,json)}catch(e){}
+  if(!DB){setSync('local');return}
+  if(inflight){dirty=true;return}
+  inflight=true;
+  try{await DB.doc('colloscope/main').set({json:json,savedAt:S.savedAt});setSync('saved')}catch(e){setSync('local')}
+  inflight=false;
+  if(dirty){dirty=false;scheduleSave()}
+}
+function touch(){scheduleSave();render()}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),2400)}
+
+/* utilitaires métier */
+function usedHours(){
+  const hs=[];S.salles.forEach(s=>Object.keys(s.dispo).forEach(k=>hs.push(+k.split('-')[1])));
+  S.colles.forEach(c=>{if(c.h!=null)hs.push(c.h)});
+  let a,b;
+  if(hs.length){a=Math.min.apply(null,hs);b=Math.max.apply(null,hs)}else{a=S.settings.hmin;b=S.settings.hmax-1}
+  const r=[];for(let h=a;h<=b;h++)r.push(h);return r;
+}
+function curEnt(){return ui.ent.t==='salle'?find(S.salles,ui.ent.id):find(S.colleurs,ui.ent.id)}
+function ensureEnt(){if(!curEnt()){if(S.salles[0])ui.ent={t:'salle',id:S.salles[0].id};else if(S.colleurs[0])ui.ent={t:'colleur',id:S.colleurs[0].id};else ui.ent={t:'salle',id:null}}}
+function unplace(c){c.c=null;c.s=null;c.d=null;c.h=null}
+function colorFor(type){const used=S.matieres.map(m=>m.color);const pal=type==='sci'?SCI:LET;return pal.find(c=>!used.includes(c))||pal[S.matieres.length%pal.length]}
+function problems(cap){
+  const out=[];
+  if(!S.groupes.length)out.push({t:'Ajoutez au moins un groupe de colle (étape 1).',hard:1});
+  if(!S.matieres.length)out.push({t:'Ajoutez au moins une matière (étape 1).',hard:1});
+  if(!cap.total)out.push({t:'Cochez des créneaux pour au moins une salle (étape 2).',hard:1});
+  S.matieres.forEach(m=>{
+    if(!S.colleurs.some(c=>c.mat===m.id))out.push({t:'Aucun colleur pour '+m.nom+'.',hard:1});
+    else{const r=cap.per[m.id];if(r.need>r.cap)out.push({t:m.nom+' : '+fmt(r.need)+' colles par semaine requises, '+r.cap+' possibles côté colleurs.'})}
+  });
+  if(cap.total&&cap.need>cap.total)out.push({t:'Les salles offrent '+cap.total+' créneaux par semaine pour '+fmt(cap.need)+' colles requises.'});
+  return out;
+}
+function feasible(col,w,d,h){
+  const here=S.colles.filter(x=>x.w===w&&x.d!=null&&x.id!==col.id);
+  if(here.some(x=>x.g===col.g&&x.d===d&&x.h===h))return null;
+  const elig=S.colleurs.filter(c=>c.mat===col.m&&availC(c,d,h)&&!here.some(x=>x.c===c.id&&x.d===d&&x.h===h));
+  if(!elig.length)return null;
+  const rooms=S.salles.filter(s=>availS(s,d,h)&&!here.some(x=>x.s===s.id&&x.d===d&&x.h===h));
+  if(!rooms.length)return null;
+  const load=id=>S.colles.filter(x=>x.c===id).length;
+  const c=elig.find(c=>c.id===col.c)||elig.slice().sort((a,b)=>load(a.id)-load(b.id))[0];
+  const s=rooms.find(s=>s.id===col.s)||rooms[0];
+  return{c:c.id,s:s.id,elig:elig,rooms:rooms};
+}
+
+/* ---------- rendu ---------- */
+const TABS=[['res','Ressources'],['dispo','Disponibilités'],['gen','Quotités et génération'],['colle','Colloscope']];
+function render(){
+  $('#tabs').innerHTML=TABS.map((t,i)=>`<button class="tab" data-act="tab" data-v="${t[0]}" ${ui.tab===t[0]?'aria-current="page"':''}><span class="n">${i+1}</span>${t[1]}</button>`).join('');
+  $('#banner').innerHTML=S.example?`<div class="banner"><p><b>Données d'exemple :</b> 8 groupes, 5 matières, 10 colleurs et 3 salles, avec un colloscope déjà généré. Modifiez-les ou repartez de zéro.</p><button class="btn sm" data-act="keepEx">Garder et modifier</button><button class="btn ghost sm" data-act="resetAll">${ui.armed==='reset'?'Confirmer l’effacement':'Repartir de zéro'}</button></div>`:'';
+  ensureEnt();
+  $('#panel').innerHTML=({res:pRes,dispo:pDispo,gen:pGen,colle:pColle})[ui.tab]();
+}
+
+function pRes(){
+  const salles=S.salles.map(s=>`<li class="row"><input class="in grow" value="${esc(s.nom)}" data-c="salles" data-id="${s.id}" data-f="nom" aria-label="Nom de la salle"><button class="lnk" data-act="goEnt" data-t="salle" data-id="${s.id}">${Object.keys(s.dispo).length} créneaux</button><button class="x" data-act="delSalle" data-id="${s.id}" aria-label="Supprimer la salle">×</button></li>`).join('')||'<li class="empty">Aucune salle pour le moment.</li>';
+  const mats=S.matieres.map(m=>`<li class="mrow" style="--mc:${m.color}"><button class="dot" data-act="cycCol" data-id="${m.id}" aria-label="Changer la couleur"></button><input class="in grow" value="${esc(m.nom)}" data-c="matieres" data-id="${m.id}" data-f="nom" aria-label="Nom de la matière"><input class="in abr" value="${esc(abbr(m))}" maxlength="4" data-c="matieres" data-id="${m.id}" data-f="abr" aria-label="Abréviation"><button class="x" data-act="delMat" data-id="${m.id}" aria-label="Supprimer la matière">×</button><div class="seg2"><button class="${m.type==='sci'?'on':''}" data-act="setType" data-id="${m.id}" data-v="sci">Sciences</button><button class="${m.type==='let'?'on':''}" data-act="setType" data-id="${m.id}" data-v="let">Lettres</button></div></li>`).join('')||'<li class="empty">Aucune matière pour le moment.</li>';
+  const cols=S.colleurs.map(c=>`<li class="row"><input class="in grow" value="${esc(c.nom)}" data-c="colleurs" data-id="${c.id}" data-f="nom" aria-label="Nom du colleur"><select class="in" data-c="colleurs" data-id="${c.id}" data-f="mat" aria-label="Matière du colleur">${S.matieres.map(m=>`<option value="${m.id}" ${m.id===c.mat?'selected':''}>${esc(m.nom)}</option>`).join('')}</select><input class="in num" type="number" min="1" max="30" value="${c.max}" data-c="colleurs" data-id="${c.id}" data-f="max" aria-label="Colles maximum par semaine" title="Colles maximum par semaine"><button class="lnk" data-act="goEnt" data-t="colleur" data-id="${c.id}">${hasAny(c.dispo)?Object.keys(c.dispo).length+' créneaux':'toujours dispo'}</button><button class="x" data-act="delCol" data-id="${c.id}" aria-label="Supprimer le colleur">×</button></li>`).join('')||'<li class="empty">Aucun colleur pour le moment.</li>';
+  const grp=S.groupes.map(g=>`<li><input class="in" style="width:84px" value="${esc(g.nom)}" data-c="groupes" data-id="${g.id}" data-f="nom" aria-label="Nom du groupe"></li>`).join('');
+  return `<div class="grid2">
+  <section class="card"><h2>Salles</h2><p class="sub">Les créneaux d'ouverture de chaque salle se règlent à l'étape 2.</p><ul class="rows">${salles}</ul>
+    <form class="add" data-form="salle"><input class="in" id="newSalle" placeholder="Nouvelle salle (ex. B101)" aria-label="Nom de la nouvelle salle"><button class="btn">Ajouter</button></form></section>
+  <section class="card"><h2>Matières</h2><p class="sub">Les sciences sont en teintes froides, les lettres en teintes chaudes. Le colloscope alterne les deux familles.</p><ul class="rows">${mats}</ul>
+    <form class="add" data-form="mat"><input class="in" id="newMat" placeholder="Nouvelle matière" aria-label="Nom de la nouvelle matière"><select class="in" id="newMatType" style="flex:0 1 120px" aria-label="Famille"><option value="sci">Sciences</option><option value="let">Lettres</option></select><button class="btn">Ajouter</button></form></section>
+  <section class="card"><h2>Colleurs</h2><p class="sub">Le nombre à droite du nom est le maximum de colles par semaine. Sans créneau coché, un colleur est disponible partout où une salle est libre.</p><ul class="rows">${cols}</ul>
+    <form class="add" data-form="col"><input class="in" id="newCol" placeholder="Nouveau colleur" aria-label="Nom du nouveau colleur"><select class="in" id="newColMat" style="flex:0 1 160px" aria-label="Matière">${S.matieres.map(m=>`<option value="${m.id}">${esc(m.nom)}</option>`).join('')}</select><button class="btn" ${S.matieres.length?'':'disabled'}>Ajouter</button></form></section>
+  <section class="card"><h2>Groupes de colle</h2><p class="sub">Chaque groupe passe dans toutes les matières, selon les quotités de l'étape 3.</p>
+    <ul class="rows" style="flex-direction:row;flex-wrap:wrap">${grp||'<li class="empty">Aucun groupe pour le moment.</li>'}</ul>
+    <form class="add" data-form="grp"><label class="fld" style="flex-direction:row;align-items:center;gap:8px">Nombre de groupes<input class="in num" id="nGrp" type="number" min="0" max="60" value="${S.groupes.length}"></label><button class="btn">Appliquer</button></form></section>
+  </div>`;
+}
+
+function pDispo(){
+  const e=curEnt();
+  const salChips=S.salles.map(s=>`<button class="ent" data-act="goEnt" data-t="salle" data-id="${s.id}" aria-pressed="${ui.ent.t==='salle'&&ui.ent.id===s.id}">${esc(s.nom)}<small>${Object.keys(s.dispo).length}</small></button>`).join('')||'<span class="empty">Ajoutez une salle à l’étape 1.</span>';
+  const colChips=S.colleurs.map(c=>{const m=find(S.matieres,c.mat);return `<button class="ent" style="--mc:${m?m.color:'var(--muted)'}" data-act="goEnt" data-t="colleur" data-id="${c.id}" aria-pressed="${ui.ent.t==='colleur'&&ui.ent.id===c.id}">${esc(c.nom)}<small>${abbr(m)}</small></button>`}).join('')||'<span class="empty">Ajoutez un colleur à l’étape 1.</span>';
+  let grid='<p class="empty">Choisissez une salle ou un colleur ci-dessus.</p>';
+  if(e){
+    const isRoom=ui.ent.t==='salle';
+    const m=isRoom?null:find(S.matieres,e.mat);
+    const ec=isRoom?'var(--accent)':(m?m.color:'var(--accent)');
+    const hs=[];for(let h=S.settings.hmin;h<S.settings.hmax;h++)hs.push(h);
+    const free=!isRoom&&!hasAny(e.dispo);
+    const others=(isRoom?S.salles:S.colleurs).filter(x=>x.id!==e.id);
+    grid=`<div class="tools"><button class="btn ghost sm" data-act="fillAll">Tout cocher</button><button class="btn ghost sm" data-act="clearAll">Tout vider</button>${others.length?`<select class="in" data-s="copyFrom" aria-label="Copier depuis"><option value="">Copier depuis…</option>${others.map(x=>`<option value="${x.id}">${esc(x.nom)}</option>`).join('')}</select>`:''}</div>
+    <p class="hint">${isRoom?'Cochez les heures où la salle est ouverte.':free?'Aucune case cochée : ce colleur est disponible à toute heure où une salle est libre. Cochez ses créneaux pour le restreindre.':'Cochez les heures où ce colleur peut venir.'} Faites glisser pour peindre plusieurs cases, cliquez un jour ou une heure pour la ligne entière.</p>
+    <div class="pg ${free?'allfree':''}" style="--ec:${ec}">
+      <span></span>${DAYS.map((d,i)=>`<button class="ph" data-act="togCol" data-d="${i}">${d}</button>`).join('')}
+      ${hs.map(h=>`<button class="ph" data-act="togRow" data-h="${h}">${h}h</button>${DAYS.map((_,d)=>`<div class="pc ${e.dispo[keyOf(d,h)]?'on':''}" data-k="${keyOf(d,h)}"></div>`).join('')}`).join('')}
+    </div>`;
+  }
+  const rows=usedHours();
+  const maxR=Math.max(1,S.salles.length);
+  const anyRoom=S.salles.some(s=>hasAny(s.dispo));
+  const syn=anyRoom?`<div class="syn"><span></span>${DAYS.map(d=>`<div class="rl">${d}</div>`).join('')}${rows.map(h=>`<div class="rl">${h}h</div>${DAYS.map((_,d)=>{const n=roomsAt(S,d,h);const ms=S.matieres.filter(m=>S.colleurs.some(c=>c.mat===m.id&&availC(c,d,h)));return `<div class="sc ${n?'':'z'}" style="--v:${Math.round(8+60*n/maxR)}" title="${n} salle(s)"><span>${n||'·'}</span>${n?`<span class="dots">${ms.map(m=>`<i style="--mc:${m.color}"></i>`).join('')}</span>`:''}</div>`}).join('')}`).join('')}</div>`:'<p class="empty">Cochez des créneaux pour une salle : la synthèse apparaît ici.</p>';
+  return `<div class="ents"><div class="chips"><span class="lab" style="align-self:center">Salles</span>${salChips}</div><div class="chips"><span class="lab" style="align-self:center">Colleurs</span>${colChips}</div></div>
+  <div class="grid2"><section class="card"><h2>${e?'Disponibilités : '+esc(e.nom):'Disponibilités'}</h2><p class="sub"></p>${grid}</section>
+  <section class="card"><h2>Synthèse des créneaux</h2><p class="sub">Chaque case donne le nombre de salles ouvertes. Les petits carrés indiquent les matières qui ont au moins un colleur disponible.</p>${syn}</section></div>`;
+}
+
+function pGen(){
+  const st=S.settings,cap=capacity(S),pr=problems(cap),act=activeWeeks(S);
+  const chips=Array.from({length:st.weeks},(_,i)=>{const off=st.skip.includes(i);const n=act.indexOf(i)+1;return `<button class="wchip ${off?'off':''}" data-act="skipW" data-w="${i}" aria-pressed="${off}" title="${off?'Semaine sans colle : cliquer pour la rétablir':'Cliquer pour exclure cette semaine'}"><b>${off?'vac.':'S'+n}</b><small>${fmtShort(i)}</small></button>`}).join('');
+  const yr=m=>Math.floor(act.length/Math.max(1,m.every));
+  let sciYr=0,letYr=0;S.matieres.forEach(m=>{m.type==='sci'?sciYr+=yr(m):letYr+=yr(m)});
+  const q=S.matieres.map(m=>{const r=cap.per[m.id];const pct=r.cap?Math.min(100,100*r.need/r.cap):100;const bad=r.need>r.cap;
+    return `<li class="qrow" style="--mc:${m.color}"><div class="qh"><span class="dot s" style="--mc:${m.color}"></span><b>${esc(m.nom)}</b><span class="tag">${m.type==='sci'?'Sciences':'Lettres'}</span></div>
+    <div class="stepper"><span>1 colle toutes les</span><button data-act="step" data-id="${m.id}" data-d="-1" aria-label="Moins">−</button><output>${m.every}</output><button data-act="step" data-id="${m.id}" data-d="1" aria-label="Plus">+</button><span>semaines</span></div>
+    <div class="qf">≈ ${yr(m)} colles par groupe sur l'année</div>
+    <div class="bar ${bad?'bad':''}"><i style="width:${pct}%"></i></div>
+    <div class="qc">${fmt(r.need)} colles par semaine requises · ${r.cap} possibles côté colleurs</div></li>`}).join('')||'<li class="empty">Ajoutez des matières à l’étape 1.</li>';
+  const tp=cap.total?Math.min(100,100*cap.need/cap.total):100;
+  const hard=pr.some(p=>p.hard);
+  const balance=(sciYr&&letYr)?(Math.max(sciYr,letYr)>1.6*Math.min(sciYr,letYr)?`Par groupe sur l'année : ${sciYr} colles de sciences pour ${letYr} de lettres. Ce déséquilibre limite l'alternance.`:`Par groupe sur l'année : ${sciYr} colles de sciences, ${letYr} de lettres. L'alternance est possible.`):'';
+  const hasC=S.colles.length>0;
+  return `<div class="grid2">
+  <section class="card"><h2>Période</h2><p class="sub">Cliquez une semaine pour l'exclure (vacances, examens). Les quotités comptent uniquement les semaines actives.</p>
+    <div class="fields"><label class="fld">Premier lundi<input class="in" type="date" id="fStart" data-set="start" value="${st.start}"></label>
+    <label class="fld">Nombre de semaines<input class="in num" type="number" min="1" max="45" data-set="weeks" value="${st.weeks}"></label>
+    <label class="fld">Heures d'ouverture<span style="display:flex;gap:6px;align-items:center;font-weight:400"><input class="in num" type="number" min="0" max="22" data-set="hmin" value="${st.hmin}"> à <input class="in num" type="number" min="1" max="24" data-set="hmax" value="${st.hmax}"></span></label></div>
+    <div class="wchips">${chips}</div><p class="hint" style="margin-top:10px">${act.length} semaines de colle.</p></section>
+  <section class="card"><h2>Règles</h2><p class="sub">Réglages appliqués par le générateur.</p>
+    <div class="fields"><label class="fld">Colles maximum par groupe et par semaine<input class="in num" type="number" min="1" max="4" data-set="maxG" value="${st.maxG}"></label></div>
+    <label class="chk"><input type="checkbox" data-set="alt" ${st.alt?'checked':''}><span>Alterner sciences et lettres pour chaque groupe, d'une colle à la suivante.</span></label>
+    <label class="chk"><input type="checkbox" data-set="oneADay" ${st.oneADay?'checked':''}><span>Éviter deux colles le même jour pour un groupe.</span></label>
+    <p class="hint">Un groupe ne passe jamais deux fois au même moment, un colleur ni une salle non plus. Les colles qui ne trouvent pas de créneau sont reportées à la semaine suivante.</p></section>
+  </div>
+  <section class="card"><h2>Quotités par matière</h2><p class="sub">Réglez la fréquence de passage de chaque groupe. La barre compare ce que la matière demande à ce que ses colleurs peuvent assurer.</p>
+    <ul class="qrows">${q}</ul>
+    <div style="margin-top:14px"><div class="qc" style="margin-bottom:4px">Salles : ${fmt(cap.need)} colles requises par semaine pour ${cap.total} créneaux de salle ouverts</div><div class="bar ${cap.need>cap.total?'bad':''}"><i style="width:${tp}%"></i></div></div>
+    ${balance?`<p class="hint" style="margin-top:12px">${balance}</p>`:''}</section>
+  <section class="card"><h2>Génération</h2>
+    ${pr.length?`<ul class="probs">${pr.map(p=>`<li class="${p.hard?'':'soft'}">${esc(p.t)}</li>`).join('')}</ul>`:'<p class="sub">Tout est en place : groupes, colleurs et salles sont cohérents avec les quotités.</p>'}
+    <div class="actions"><button class="btn primary big" data-act="generate" ${hard?'disabled':''}>${ui.armed==='gen'?'Confirmer le remplacement':hasC?'Régénérer le colloscope':'Générer le colloscope'}</button>${hasC?`<button class="btn ghost" data-act="regen" ${hard?'disabled':''}>Autre proposition</button>`:''}</div>
+    ${hasC&&S.edited?'<p class="hint" style="margin-top:10px">Le colloscope contient des modifications manuelles. Une nouvelle génération les remplace.</p>':''}</section>`;
+}
+
+/* ----- colloscope ----- */
+function matrix(mode){
+  const rows=mode==='groupe'?S.groupes:mode==='colleur'?S.colleurs:S.salles;
+  const key=mode==='groupe'?'g':mode==='colleur'?'c':'s';
+  const sk=new Set(S.settings.skip),act=activeWeeks(S);
+  const map={};S.colles.forEach(c=>{if(c[key]==null)return;(map[c[key]+'|'+c.w]||(map[c[key]+'|'+c.w]=[])).push(c)});
+  const tot={};S.colles.forEach(c=>{if(c[key]!=null)tot[c[key]]=(tot[c[key]]||0)+1});
+  const prog=ui.progress;
+  const th=Array.from({length:S.settings.weeks},(_,i)=>{
+    if(sk.has(i))return `<th class="skip" title="Semaine sans colle"></th>`;
+    const p=act.indexOf(i)+1;
+    return `<th class="${p===prog?'now':''} ${p>prog?'future':''}"><button data-act="gotoWeek" data-w="${i}" title="Semaine du ${fmtLong(i)}"><b>S${p}</b><small>${fmtShort(i)}</small></button></th>`}).join('');
+  const blk=(c)=>{
+    const m=find(S.matieres,c.m),g=find(S.groupes,c.g);
+    const slot=DAYS[c.d]+' '+c.h+'h';
+    const p=act.indexOf(c.w)+1;
+    const top=mode==='groupe'?abbr(m):esc(g?g.nom:'?');
+    const sub=mode==='groupe'?slot:mode==='colleur'?slot:slot;
+    const title=`${g?g.nom:''} · ${m?m.nom:''} · ${(find(S.colleurs,c.c)||{}).nom||''} · ${(find(S.salles,c.s)||{}).nom||''} · ${slot}`;
+    return `<button class="blk ${p===prog?'pop':''} ${c.id===ui.sel?'sel':''}" style="--mc:${m?m.color:'#888'}" data-act="selColle" data-id="${c.id}" title="${esc(title)}"><b>${top}</b><i>${sub}</i></button>`;
+  };
+  const todo=(c)=>{const m=find(S.matieres,c.m);return `<button class="blk todo" style="--mc:${m?m.color:'#888'}" data-act="selColle" data-id="${c.id}" title="À placer"><b>${abbr(m)}</b><i>à placer</i></button>`};
+  const body=rows.map(r=>{
+    const m=mode==='colleur'?find(S.matieres,r.mat):null;
+    const tds=Array.from({length:S.settings.weeks},(_,i)=>{
+      if(sk.has(i))return '<td class="skip"></td>';
+      const p=act.indexOf(i)+1;
+      let list=(map[r.id+'|'+i]||[]).slice().sort((a,b)=>a.d-b.d||a.h-b.h);
+      let h=list.map(blk).join('');
+      if(mode==='groupe')h+=S.colles.filter(c=>c.g===r.id&&c.w===i&&c.d==null).map(todo).join('');
+      return `<td class="${p===prog?'now':''} ${p>prog?'future':''}">${h}</td>`}).join('');
+    return `<tr><th class="rowh" scope="row">${m?`<span class="dot s" style="--mc:${m.color};display:inline-block;margin-right:6px"></span>`:''}${esc(r.nom)}</th>${tds}<td class="tot">${tot[r.id]||0}</td></tr>`}).join('');
+  return `<table class="mx"><thead><tr><th class="rowh"></th>${th}<th title="Total"><button style="cursor:default"><b>Σ</b></button></th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function weekView(){
+  const w=ui.week,hs=usedHours(),act=activeWeeks(S);
+  const sk=S.settings.skip.includes(w);
+  const sel=ui.sel?find(S.colles,ui.sel):null;
+  const here=S.colles.filter(c=>c.w===w&&c.d!=null);
+  const todoList=S.colles.filter(c=>c.w===w&&c.d==null);
+  const opts=Array.from({length:S.settings.weeks},(_,i)=>{const p=act.indexOf(i)+1;return `<option value="${i}" ${i===w?'selected':''}>${S.settings.skip.includes(i)?'Vacances':'S'+p}  ·  ${fmtLong(i)} – ${fmtLong(i,5)}</option>`}).join('');
+  const nav=`<div class="wknav"><button class="btn ghost sm" data-act="prevW" aria-label="Semaine précédente">‹</button><select class="in" data-s="week" aria-label="Semaine">${opts}</select><button class="btn ghost sm" data-act="nextW" aria-label="Semaine suivante">›</button><button class="btn ${ui.play?'':'primary'} sm" data-act="playW">${ui.play?'Pause':'Lire les semaines'}</button></div>`;
+  const chip=c=>{const m=find(S.matieres,c.m),g=find(S.groupes,c.g);
+    if(c.d==null)return `<button class="blk todo ${c.id===ui.sel?'sel':''}" style="--mc:${m?m.color:'#888'}" data-act="selColle" data-id="${c.id}"><b>${abbr(m)} · ${esc(g?g.nom:'?')}</b><i>à placer</i></button>`;
+    return `<button class="blk ${c.id===ui.sel?'sel':''}" style="--mc:${m?m.color:'#888'}" data-act="selColle" data-id="${c.id}"><b>${abbr(m)} · ${esc(g?g.nom:'?')}</b><i>${esc((find(S.colleurs,c.c)||{}).nom)} · ${esc((find(S.salles,c.s)||{}).nom)}</i></button>`};
+  let detail='';
+  if(sel){
+    const m=find(S.matieres,sel.m),g=find(S.groupes,sel.g);
+    let selects='';
+    if(sel.d!=null){
+      const f=feasible(sel,sel.w,sel.d,sel.h);
+      const roomsOpts=S.salles.filter(s=>availS(s,sel.d,sel.h)&&(s.id===sel.s||!here.some(x=>x.id!==sel.id&&x.s===s.id&&x.d===sel.d&&x.h===sel.h)));
+      const colOpts=S.colleurs.filter(c=>c.mat===sel.m&&(c.id===sel.c||(availC(c,sel.d,sel.h)&&!here.some(x=>x.id!==sel.id&&x.c===c.id&&x.d===sel.d&&x.h===sel.h))));
+      selects=`<label>Colleur <select class="in" data-s="selC">${colOpts.map(c=>`<option value="${c.id}" ${c.id===sel.c?'selected':''}>${esc(c.nom)}</option>`).join('')}</select></label><label>Salle <select class="in" data-s="selS">${roomsOpts.map(s=>`<option value="${s.id}" ${s.id===sel.s?'selected':''}>${esc(s.nom)}</option>`).join('')}</select></label>`;
+    }
+    detail=`<div class="detail"><span class="t">${esc(g?g.nom:'?')} · ${esc(m?m.nom:'?')}</span><span class="mono">${sel.d!=null?DAYS[sel.d]+' '+sel.h+'h':'sans créneau'}</span>${selects}<span class="hintbar">Cliquez une case verte pour ${sel.d!=null?'déplacer':'placer'} la colle.</span><span class="spacer"></span>${sel.d!=null?'<button class="btn ghost sm" data-act="unplaceSel">Retirer du créneau</button>':''}<button class="btn ghost sm" data-act="delSel">Supprimer</button><button class="btn sm" data-act="deselect">Fermer</button></div>`;
+  }
+  const cells=hs.map(h=>`<div class="hl">${h}h</div>${DAYS.map((_,d)=>{
+    const rooms=roomsAt(S,d,h);
+    const list=here.filter(c=>c.d===d&&c.h===h);
+    let cls='cell';
+    if(!rooms&&!list.length)cls+=' closed';
+    if(sel){
+      if(sel.d===d&&sel.h===h&&sel.w===w)cls+=' cur';
+      else if(feasible(sel,w,d,h))cls+=' ok';
+      else cls+=' dim';
+    }
+    return `<div class="${cls}" data-d="${d}" data-h="${h}" ${cls.includes(' ok')?'data-act="drop"':''}><span class="cap">${rooms?list.length+'/'+rooms:''}</span>${list.map(chip).join('')}</div>`}).join('')}`).join('');
+  return `${nav}${sk?'<p class="hint">Cette semaine est exclue du colloscope (vacances).</p>':''}
+  ${todoList.length?`<div class="tray"><span>À placer cette semaine</span>${todoList.map(chip).join('')}</div>`:''}
+  ${detail}
+  <div class="scroll"><div class="wk"><div class="dh"></div>${DAYS.map((d,i)=>`<div class="dh">${d}<small>${fmtShort(w,i)} · ${here.filter(c=>c.d===i).length}</small></div>`).join('')}${cells}</div></div>`;
+}
+
+function pColle(){
+  if(!S.colles.length)return `<section class="card"><h2>Pas encore de colloscope</h2><p class="sub">Renseignez les ressources, cochez les créneaux, réglez les quotités, puis lancez la génération.</p><div class="actions"><button class="btn primary big" data-act="tab" data-v="gen">Aller à la génération</button></div></section>`;
+  const st=computeStats(S);
+  const views=[['groupe','Groupes'],['colleur','Colleurs'],['salle','Salles'],['semaine','Semaine']];
+  const bilan=`<div class="bilan"><div class="stat"><b>${st.placed}<small> / ${st.planned}</small></b><span>colles placées</span></div>
+    <div class="stat"><b>${st.alt==null?'–':st.alt+' %'}</b><span>d'alternance sciences / lettres ${st.altMax!=null?`<em>(maximum possible : ${st.altMax} %)</em>`:''}</span></div>
+    <div class="stat ${st.missing?'warn':''}"><b>${st.missing}</b><span>${st.missing?'colles sans créneau, à placer à la main dans la vue Semaine':'colle sans créneau'}</span></div></div>`;
+  const bar=`<div class="bar2"><div class="seg" role="group" aria-label="Vue">${views.map(v=>`<button data-act="view" data-v="${v[0]}" aria-pressed="${ui.view===v[0]}">${v[1]}</button>`).join('')}</div><span class="spacer"></span>
+    ${ui.view!=='semaine'?'<button class="btn ghost sm" data-act="replay">Rejouer le remplissage</button><button class="btn ghost sm" data-act="copyTable">Copier le tableau</button>':''}
+    <button class="btn ghost sm" data-act="csv">Exporter en CSV</button></div>`;
+  const body=ui.view==='semaine'?weekView():`<div class="scroll">${matrix(ui.view)}</div>`;
+  return bilan+bar+body;
+}
+
+/* ---------- actions ---------- */
+function stopPlay(){clearInterval(ui.play);ui.play=null}
+function stopReplay(){clearInterval(ui.timer);ui.timer=null}
+function startReplay(){
+  stopReplay();
+  const n=activeWeeks(S).length;
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches){ui.progress=1e9;render();return}
+  ui.progress=0;render();
+  ui.timer=setInterval(()=>{ui.progress++;if(ui.progress>n+1){ui.progress=1e9;stopReplay()}const sc=document.querySelector('.scroll');const t=sc&&sc.scrollTop,l=sc&&sc.scrollLeft;render();const s2=document.querySelector('.scroll');if(s2){s2.scrollTop=t;s2.scrollLeft=l}},140);
+}
+function runGenerate(next){
+  stopPlay();
+  if(next)S.settings.seed=(S.settings.seed||1)+1;
+  S.colles=generateColles(S,S.settings.seed||1);
+  S.edited=false;ui.sel=null;ui.armed=null;ui.week=0;ui.view='groupe';ui.tab='colle';
+  scheduleSave();
+  const st=computeStats(S);
+  startReplay();
+  window.scrollTo(0,0);
+  toast(st.placed+' colles placées'+(st.missing?', '+st.missing+' à placer à la main':''));
+}
+function csvText(){
+  const act=activeWeeks(S);
+  const rows=[['Semaine','Date du lundi','Jour','Heure','Groupe','Matière','Colleur','Salle']];
+  S.colles.slice().sort((a,b)=>a.w-b.w||(a.d==null?9:a.d)-(b.d==null?9:b.d)||a.h-b.h).forEach(c=>{
+    const m=find(S.matieres,c.m),g=find(S.groupes,c.g);
+    rows.push(['S'+(act.indexOf(c.w)+1),weekDate(c.w).toLocaleDateString('fr-FR'),c.d==null?'':DAYS[c.d],c.h==null?'':c.h+'h',g?g.nom:'',m?m.nom:'',(find(S.colleurs,c.c)||{}).nom||'',(find(S.salles,c.s)||{}).nom||'']);
+  });
+  return rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\n');
+}
+function tableText(){
+  const mode=ui.view,rows=mode==='groupe'?S.groupes:mode==='colleur'?S.colleurs:S.salles,key=mode==='groupe'?'g':mode==='colleur'?'c':'s';
+  const sk=new Set(S.settings.skip),act=activeWeeks(S);
+  const weeks=[];for(let i=0;i<S.settings.weeks;i++)if(!sk.has(i))weeks.push(i);
+  const head=['',...weeks.map(i=>'S'+(act.indexOf(i)+1)+' ('+fmtShort(i)+')')];
+  const lines=[head.join('\t')];
+  rows.forEach(r=>{lines.push([r.nom,...weeks.map(i=>S.colles.filter(c=>c[key]===r.id&&c.w===i&&c.d!=null).sort((a,b)=>a.d-b.d||a.h-b.h).map(c=>{const m=find(S.matieres,c.m),g=find(S.groupes,c.g);return (mode==='groupe'?abbr(m):g.nom+' '+abbr(m))+' '+DAYS[c.d]+' '+c.h+'h'}).join(' + '))].join('\t'))});
+  return lines.join('\n');
+}
+async function copyText(txt,label){
+  try{await navigator.clipboard.writeText(txt);toast(label+' copié')}
+  catch(e){openModal(`<h2>${esc(label)}</h2><p class="sub">Sélectionnez le texte puis copiez-le.</p><textarea id="mtxt" readonly>${esc(txt)}</textarea><div class="actions"><button class="btn" data-act="closeModal">Fermer</button></div>`);const t=$('#mtxt');if(t){t.focus();t.select()}}
+}
+async function saveFile(name,data){
+  if(!DL){copyText(data,'Contenu');return}
+  try{await DL.save({filename:name,data:data});toast('Fichier proposé')}catch(e){if(e&&e.code!=='declined')toast('Enregistrement impossible ici')}
+}
+function openModal(h){$('#modal').innerHTML=`<div class="ovl" data-act="closeModal"><div class="modal">${h}</div></div>`}
+function closeModal(){$('#modal').innerHTML=''}
+
+function act(a,t){
+  const id=t.dataset.id;
+  switch(a){
+    case 'tab':ui.tab=t.dataset.v;stopPlay();render();window.scrollTo(0,0);break;
+    case 'keepEx':S.example=false;touch();break;
+    case 'resetAll':
+      if(ui.armed!=='reset'){ui.armed='reset';render();setTimeout(()=>{if(ui.armed==='reset'){ui.armed=null;render()}},4000);break}
+      ui.armed=null;S=Object.assign(makeExample(),{example:false,salles:[],matieres:[],colleurs:[],groupes:[],colles:[]});ui.sel=null;ui.tab='res';scheduleSave();render();toast('Page vierge, prête à remplir');break;
+    case 'delSalle':S.salles=S.salles.filter(x=>x.id!==id);S.colles.forEach(c=>{if(c.s===id)unplace(c)});touch();break;
+    case 'delCol':S.colleurs=S.colleurs.filter(x=>x.id!==id);S.colles.forEach(c=>{if(c.c===id)unplace(c)});touch();break;
+    case 'delMat':S.matieres=S.matieres.filter(x=>x.id!==id);S.colleurs=S.colleurs.filter(x=>x.mat!==id);S.colles=S.colles.filter(c=>c.m!==id);touch();break;
+    case 'cycCol':{const m=find(S.matieres,id),pal=m.type==='sci'?SCI:LET;m.color=pal[(pal.indexOf(m.color)+1)%pal.length];touch();break}
+    case 'setType':{const m=find(S.matieres,id);if(m.type!==t.dataset.v){m.type=t.dataset.v;m.color=colorFor(m.type)}touch();break}
+    case 'goEnt':ui.ent={t:t.dataset.t,id:id};ui.tab='dispo';render();break;
+    case 'fillAll':{const e=curEnt();if(!e)break;for(let d=0;d<6;d++)for(let h=S.settings.hmin;h<S.settings.hmax;h++)e.dispo[keyOf(d,h)]=1;touch();break}
+    case 'clearAll':{const e=curEnt();if(!e)break;e.dispo={};touch();break}
+    case 'togCol':{const e=curEnt();if(!e)break;const d=+t.dataset.d,ks=[];for(let h=S.settings.hmin;h<S.settings.hmax;h++)ks.push(keyOf(d,h));const all=ks.every(k=>e.dispo[k]);ks.forEach(k=>all?delete e.dispo[k]:e.dispo[k]=1);touch();break}
+    case 'togRow':{const e=curEnt();if(!e)break;const h=+t.dataset.h,ks=DAYS.map((_,d)=>keyOf(d,h));const all=ks.every(k=>e.dispo[k]);ks.forEach(k=>all?delete e.dispo[k]:e.dispo[k]=1);touch();break}
+    case 'step':{const m=find(S.matieres,id);m.every=Math.max(1,Math.min(20,m.every+(+t.dataset.d)));touch();break}
+    case 'skipW':{const i=+t.dataset.w,a2=S.settings.skip,k=a2.indexOf(i);k>=0?a2.splice(k,1):a2.push(i);S.settings.skip=a2.slice().sort((x,y)=>x-y);touch();break}
+    case 'generate':
+      if(S.colles.length&&S.edited&&ui.armed!=='gen'){ui.armed='gen';render();setTimeout(()=>{if(ui.armed==='gen'){ui.armed=null;render()}},4000);break}
+      runGenerate(false);break;
+    case 'regen':runGenerate(true);break;
+    case 'view':stopPlay();ui.view=t.dataset.v;ui.sel=null;ui.progress=1e9;stopReplay();render();break;
+    case 'replay':startReplay();break;
+    case 'gotoWeek':ui.week=+t.dataset.w;ui.view='semaine';ui.sel=null;ui.progress=1e9;stopReplay();render();break;
+    case 'prevW':ui.week=Math.max(0,ui.week-1);render();break;
+    case 'nextW':ui.week=Math.min(S.settings.weeks-1,ui.week+1);render();break;
+    case 'playW':
+      if(ui.play){stopPlay();render();break}
+      ui.sel=null;ui.play=setInterval(()=>{if(ui.week>=S.settings.weeks-1){stopPlay();render();return}ui.week++;render()},1100);render();break;
+    case 'selColle':{const c=find(S.colles,id);if(!c)break;stopPlay();if(ui.view!=='semaine'){ui.view='semaine';ui.progress=1e9;stopReplay();ui.sel=id;ui.week=c.w}else ui.sel=ui.sel===id?null:id;render();break}
+    case 'deselect':ui.sel=null;render();break;
+    case 'drop':{
+      const sel=ui.sel&&find(S.colles,ui.sel);if(!sel)break;
+      const d=+t.dataset.d,h=+t.dataset.h,f=feasible(sel,ui.week,d,h);if(!f)break;
+      sel.w=ui.week;sel.d=d;sel.h=h;sel.c=f.c;sel.s=f.s;S.edited=true;ui.sel=null;touch();toast('Colle placée : '+DAYS[d]+' '+h+'h');break}
+    case 'unplaceSel':{const c=find(S.colles,ui.sel);if(c){unplace(c);S.edited=true}touch();break}
+    case 'delSel':S.colles=S.colles.filter(c=>c.id!==ui.sel);ui.sel=null;S.edited=true;touch();break;
+    case 'copyTable':copyText(tableText(),'Tableau');break;
+    case 'csv':saveFile('colloscope.csv','﻿'+csvText());if(!DL)break;break;
+    case 'backup':openModal(`<h2>Sauvegarde</h2><p class="sub">Les données sont enregistrées automatiquement. Ce texte contient tout le projet : copiez-le pour le conserver, ou collez une sauvegarde puis importez-la.</p><textarea id="mtxt" spellcheck="false">${esc(JSON.stringify(S))}</textarea><div class="actions"><button class="btn" data-act="copyBackup">Copier</button>${DL?'<button class="btn ghost" data-act="fileBackup">Enregistrer en fichier</button>':''}<button class="btn ghost" data-act="importBackup">Importer le texte ci-dessus</button><span class="spacer"></span><button class="btn ghost" data-act="closeModal">Fermer</button></div>`);break;
+    case 'copyBackup':copyText(JSON.stringify(S),'Sauvegarde');break;
+    case 'fileBackup':saveFile('colloscope.json',JSON.stringify(S));break;
+    case 'importBackup':{
+      try{const o=JSON.parse($('#mtxt').value);if(!o||o.v!==1||!o.settings||!Array.isArray(o.salles)||!Array.isArray(o.colles))throw 0;S=o;S.example=false;ui.sel=null;closeModal();scheduleSave();render();toast('Sauvegarde importée')}
+      catch(e){toast('Texte de sauvegarde invalide')}break}
+    case 'closeModal':closeModal();break;
+  }
+}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t)return;if(t.classList.contains('ovl')&&e.target!==t)return;act(t.dataset.act,t)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('#modal').innerHTML)closeModal();else if(ui.sel){ui.sel=null;render()}}});
+
+document.addEventListener('submit',e=>{
+  const f=e.target.dataset.form;if(!f)return;e.preventDefault();
+  if(f==='salle'){const v=$('#newSalle').value.trim();if(!v)return;S.salles.push({id:uid('s'),nom:v,dispo:{}});touch();$('#newSalle').focus()}
+  if(f==='mat'){const v=$('#newMat').value.trim();if(!v)return;const type=$('#newMatType').value;S.matieres.push({id:uid('m'),nom:v,abr:'',type:type,every:2,color:colorFor(type)});touch();$('#newMat').focus()}
+  if(f==='col'){const v=$('#newCol').value.trim();const mat=$('#newColMat').value;if(!v||!mat)return;S.colleurs.push({id:uid('k'),nom:v,mat:mat,max:6,dispo:{}});touch();$('#newCol').focus()}
+  if(f==='grp'){const n=Math.max(0,Math.min(60,Math.round(+$('#nGrp').value)||0));
+    while(S.groupes.length<n)S.groupes.push({id:uid('g'),nom:'G'+(S.groupes.length+1)});
+    if(S.groupes.length>n){const gone=new Set(S.groupes.slice(n).map(g=>g.id));S.groupes=S.groupes.slice(0,n);S.colles=S.colles.filter(c=>!gone.has(c.g))}
+    touch()}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.f){
+    const o=find(S[t.dataset.c],t.dataset.id);if(!o)return;
+    let v=t.value;
+    if(t.type==='number'){v=Math.max(+t.min||0,Math.min(+t.max||999,Math.round(+v)||+t.min||1))}
+    if(t.dataset.f==='abr')v=v.trim().slice(0,4).toUpperCase();
+    if(t.dataset.f==='mat'){S.colles.forEach(c=>{if(c.c===o.id)unplace(c)})}
+    o[t.dataset.f]=v;touch();return;
+  }
+  if(t.dataset.s){
+    const k=t.dataset.s;
+    if(k==='copyFrom'&&t.value){const src=(ui.ent.t==='salle'?S.salles:S.colleurs).find(x=>x.id===t.value),e2=curEnt();if(src&&e2){e2.dispo=Object.assign({},src.dispo);touch();toast('Disponibilités copiées')}}
+    if(k==='week'){ui.week=+t.value;ui.sel=null;render()}
+    if(k==='selC'||k==='selS'){const c=find(S.colles,ui.sel);if(c){if(k==='selC')c.c=t.value;else c.s=t.value;S.edited=true;touch()}}
+    return;
+  }
+  if(t.dataset.set){
+    const k=t.dataset.set,st=S.settings;
+    if(k==='start'){if(t.value){st.start=toMonday(t.value)}}
+    else if(k==='alt'||k==='oneADay')st[k]=t.checked;
+    else{
+      let v=Math.round(+t.value)||+t.min;v=Math.max(+t.min,Math.min(+t.max,v));st[k]=v;
+      if(k==='weeks'){st.skip=st.skip.filter(i=>i<v);S.colles=S.colles.filter(c=>c.w<v);ui.week=Math.min(ui.week,v-1)}
+      if(st.hmax<=st.hmin){if(k==='hmin')st.hmax=st.hmin+1;else st.hmin=st.hmax-1}
+    }
+    touch();
+  }
+});
+
+/* peinture des disponibilités */
+let painting=null;
+function applyPaint(c){const k=c.dataset.k,e=painting.ent;if(painting.val){e.dispo[k]=1;c.classList.add('on')}else{delete e.dispo[k];c.classList.remove('on')}}
+document.addEventListener('pointerdown',e=>{
+  const c=e.target.closest&&e.target.closest('.pc');if(!c)return;
+  const ent=curEnt();if(!ent)return;
+  if(e.pointerType==='mouse')e.preventDefault();
+  painting={ent:ent,val:!ent.dispo[c.dataset.k]};applyPaint(c);
+});
+document.addEventListener('pointermove',e=>{
+  if(!painting)return;
+  const el=document.elementFromPoint(e.clientX,e.clientY);
+  const c=el&&el.closest&&el.closest('.pc');if(c)applyPaint(c);
+});
+function endPaint(){if(painting){painting=null;touch()}}
+document.addEventListener('pointerup',endPaint);
+document.addEventListener('pointercancel',endPaint);
+
+/* démarrage */
+render();setSync('local');
+(async()=>{
+  try{
+    const c=window.claude;if(!c||!c.use)return;
+    DL=await c.use('downloads');
+    DB=await c.use('db');
+    if(!DB){setSync('local');return}
+    const snap=await DB.doc('colloscope/main').get();
+    if(snap.exists){
+      const o=JSON.parse(snap.data().json);
+      if(o&&o.v===1&&o.settings&&(!S.savedAt||(o.savedAt||0)>S.savedAt)){S=o;ui.sel=null;render()}
+    }
+    setSync('saved');
+  }catch(e){DB=null;setSync('local')}
+})();
+</script>
+
+</body></html>
